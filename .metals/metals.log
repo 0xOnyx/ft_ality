@@ -1,0 +1,8 @@
+2025.11.30 13:19:33 INFO  Started: Metals version 1.6.4 in folders '/home/onyx/IdeaProjects/ft_ality' for client Cursor 1.99.3.
+2025.11.30 13:19:34 WARN  Using H2 2.4.240 which is newer than the version Flyway has been verified with. The latest verified version of H2 is 2.3.232.
+2025.11.30 14:28:56 INFO  Started: Metals version 1.6.4 in folders '/home/onyx/IdeaProjects/ft_ality' for client Cursor 1.105.1.
+2025.11.30 14:29:00 WARN  Using H2 2.4.240 which is newer than the version Flyway has been verified with. The latest verified version of H2 is 2.3.232.
+Nov 30, 2025 2:37:56 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
+INFO: Unsupported notification method: $/setTrace
+Nov 30, 2025 7:23:38 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
+INFO: Unsupported notification method: $/setTrace
