@@ -385,7 +385,7 @@ def construireAutomate(regles: List[(String, List[String])]): Automate = {
   
   // 2. Ajouter chaque règle une par une (avec foldLeft)
   val constructionFinale = regles.foldLeft(constructionInitiale) { (construction, regle) =>
-    val (nomMouvement, symboles) = regle
+    val (nomMouvement, symboles) = relge
     ajouterRegle(construction, nomMouvement, symboles, etat0)
   }
   
@@ -596,36 +596,237 @@ Automate : État 0 --[BP]--> État 1 (FINAL: "Claw Slam")
 
 ---
 
-## ⌨️ Étape 9 : Lire les touches du clavier
+## ⌨️ Étape 9 : Lire les touches du clavier EN TEMPS RÉEL (sans Entrée)
 
 ### Qu'est-ce qu'on fait ?
 
-On attend que l'utilisateur tape une touche et on la lit.
+On lit les touches instantanément dès qu'elles sont pressées, **sans avoir besoin d'appuyer sur Entrée**. C'est essentiel pour un jeu de combat en temps réel !
 
-### Code simple
+### ⚠️ Important : Mode terminal raw
+
+Par défaut, le terminal est en mode "cooked" (avec buffer). On doit le mettre en mode "raw" pour lire les touches immédiatement.
+
+### Code pour lire les touches en temps réel
 
 ```scala
-// Lire une touche du clavier
-def lireTouche(): Option[String] = {
+import java.io.{InputStream, IOException}
+import scala.util.{Try, Success, Failure}
+
+// Objet pour gérer le terminal en mode raw
+object TerminalRaw {
+  private var terminalConfig: Option[String] = None
+  
+  // Mettre le terminal en mode raw (désactiver le buffer)
+  def activerModeRaw(): Either[String, Unit] = {
+    val os = System.getProperty("os.name").toLowerCase
+    try {
+      if (os.contains("win")) {
+        // Windows : utiliser la console native
+        // Note: Sur Windows, c'est plus complexe, on utilise Runtime.exec
+        val process = Runtime.getRuntime.exec("cmd.exe /c mode con: cols=80 lines=25")
+        process.waitFor()
+        Right(())
+      } else {
+        // Linux/Mac : utiliser stty pour mettre en mode raw
+        val pb = new ProcessBuilder("sh", "-c", "stty -g < /dev/tty").redirectErrorStream(true)
+        val process = pb.start()
+        val config = scala.io.Source.fromInputStream(process.getInputStream).mkString.trim
+        process.waitFor()
+        
+        terminalConfig = Some(config)
+        
+        // Mettre en mode raw
+        val pbRaw = new ProcessBuilder("sh", "-c", "stty raw -echo < /dev/tty").redirectErrorStream(true)
+        val processRaw = pbRaw.start()
+        processRaw.waitFor()
+        
+        Right(())
+      }
+    } catch {
+      case e: Exception => Left(s"Erreur activation mode raw: ${e.getMessage}")
+    }
+  }
+  
+  // Remettre le terminal en mode normal
+  def desactiverModeRaw(): Unit = {
+    val os = System.getProperty("os.name").toLowerCase
+    try {
+      if (os.contains("win")) {
+        // Windows : réinitialiser
+        Runtime.getRuntime.exec("cmd.exe /c mode con")
+      } else {
+        // Linux/Mac : restaurer la configuration
+        terminalConfig match {
+          case Some(config) =>
+            val pb = new ProcessBuilder("sh", "-c", s"stty $config < /dev/tty").redirectErrorStream(true)
+            pb.start().waitFor()
+          case None =>
+            // Mode par défaut
+            val pb = new ProcessBuilder("sh", "-c", "stty cooked echo < /dev/tty").redirectErrorStream(true)
+            pb.start().waitFor()
+        }
+      }
+    } catch {
+      case _: Exception => // Ignorer les erreurs de restauration
+    }
+  }
+}
+
+// Lire une touche en temps réel (sans Entrée)
+def lireToucheTempsReel(): Option[Char] = {
   try {
-    val ligne = scala.io.StdIn.readLine()
-    if (ligne == null || ligne.isEmpty) {
-      None  // Pas de touche
+    if (System.in.available() > 0) {
+      val touche = System.in.read().toChar
+      Some(touche)
     } else {
-      Some(ligne.trim)  // La touche tapée
+      None
     }
   } catch {
-    case _: Exception => None
+    case _: IOException => None
+  }
+}
+
+// Lire une touche avec délai (non-bloquant)
+def lireToucheAvecDelai(delaiMs: Long): Option[Char] = {
+  val debut = System.currentTimeMillis()
+  
+  while (System.currentTimeMillis() - debut < delaiMs) {
+    lireToucheTempsReel() match {
+      case Some(touche) => return Some(touche)
+      case None => Thread.sleep(10)  // Petit délai pour ne pas surcharger le CPU
+    }
+  }
+  
+  None  // Aucune touche dans le délai
+}
+
+// Convertir un caractère en String (pour compatibilité avec le mapping)
+def charToString(c: Char): String = {
+  c.toString.toLowerCase
+}
+```
+
+### Version simplifiée (cross-platform)
+
+Si la version avec `stty` est trop complexe, voici une version plus simple qui fonctionne sur tous les systèmes avec une bibliothèque Java standard :
+
+```scala
+import java.io.{InputStream, IOException}
+
+// Lire une touche en temps réel (version simplifiée)
+// Fonctionne mieux sur Linux/Mac, nécessite configuration sur Windows
+object KeyboardReader {
+  private var modeRawActive = false
+  
+  // Initialiser le mode raw
+  def initialiser(): Either[String, Unit] = {
+    val os = System.getProperty("os.name").toLowerCase
+    
+    if (os.contains("win")) {
+      // Windows : utiliser jline ou bibliothèque native
+      // Pour simplifier, on peut utiliser une bibliothèque comme jline3
+      Left("Sur Windows, utilisez une bibliothèque comme jline3 pour le mode raw (voir section Alternative ci-dessous)")
+    } else {
+      // Linux/Mac : utiliser stty
+      try {
+        val process = Runtime.getRuntime.exec(Array("sh", "-c", "stty -g"))
+        val config = scala.io.Source.fromInputStream(process.getInputStream).mkString.trim
+        process.waitFor()
+        
+        // Sauvegarder la config puis activer raw
+        Runtime.getRuntime.exec(Array("sh", "-c", s"stty -echo raw < /dev/tty")).waitFor()
+        modeRawActive = true
+        Right(())
+      } catch {
+        case e: Exception => Left(s"Impossible d'activer le mode raw: ${e.getMessage}")
+      }
+    }
+  }
+  
+  // Restaurer le mode normal
+  def restaurer(): Unit = {
+    if (modeRawActive) {
+      try {
+        Runtime.getRuntime.exec(Array("sh", "-c", "stty echo cooked < /dev/tty")).waitFor()
+        modeRawActive = false
+      } catch {
+        case _: Exception => // Ignorer
+      }
+    }
+  }
+  
+  // Lire une touche (non-bloquant)
+  def lireTouche(): Option[Char] = {
+    try {
+      if (System.in.available() > 0) {
+        Some(System.in.read().toChar)
+      } else {
+        None
+      }
+    } catch {
+      case _: IOException => None
+    }
   }
 }
 ```
 
-**Explication** :
-- `scala.io.StdIn.readLine()` : Attend que l'utilisateur tape quelque chose et appuie sur Entrée
-- `trim` : Enlève les espaces
-- Retourne `Some("d")` si l'utilisateur a tapé "d", ou `None` s'il n'y a rien
+### Utilisation dans le code principal
 
-**Note** : En vrai, pour un jeu de combat, on veut lire les touches en temps réel (sans appuyer sur Entrée). Mais pour commencer, cette version simple fonctionne.
+```scala
+// Au début du programme
+KeyboardReader.initialiser() match {
+  case Right(_) =>
+    println("Mode temps réel activé !")
+    // ... code du jeu ...
+  case Left(erreur) =>
+    println(s"Erreur: $erreur")
+    sys.exit(1)
+}
+
+// À la fin du programme (important !)
+try {
+  // ... code du jeu ...
+} finally {
+  KeyboardReader.restaurer()  // Toujours restaurer le terminal !
+}
+```
+
+### Alternative : Utiliser une bibliothèque (recommandé)
+
+Pour une solution plus robuste et cross-platform, utilisez `jline3` :
+
+```scala
+// Ajouter dans build.sbt :
+libraryDependencies += "org.jline" % "jline" % "3.21.0"
+
+// Dans le code :
+import org.jline.terminal.TerminalBuilder
+import org.jline.terminal.Terminal
+
+object KeyboardReader {
+  private val terminal: Terminal = TerminalBuilder.builder()
+    .system(true)
+    .jna(true)
+    .build()
+  
+  terminal.enterRawMode()
+  
+  def lireTouche(): Option[Char] = {
+    val reader = terminal.reader()
+    if (reader.ready()) {
+      Some(reader.read().toChar)
+    } else {
+      None
+    }
+  }
+  
+  def fermer(): Unit = {
+    terminal.close()
+  }
+}
+```
+
+**Avantage** : `jline3` gère automatiquement Windows, Linux et Mac !
 
 ---
 
@@ -692,7 +893,7 @@ mapping = Map("d" -> "[BP]", "x" -> "[FP]")
 
 ---
 
-## 🎮 Étape 11 : La boucle principale (FONCTIONNEL)
+## 🎮 Étape 11 : La boucle principale (FONCTIONNEL) avec délai pour les combos
 
 ### Qu'est-ce qu'on fait ?
 
@@ -700,63 +901,84 @@ On fait une boucle infinie qui :
 1. Lit une touche
 2. Convertit la touche en symbole
 3. Utilise le symbole dans l'automate
-4. Affiche le mouvement si reconnu
+4. **Si on atteint un état final, on attend un délai avant d'afficher** (pour permettre les combos longs)
+5. Affiche le mouvement si reconnu
 
-### Code fonctionnel pur (récursion terminale)
+### ⏱️ Pourquoi un délai ?
+
+Imagine que tu as deux combos :
+- "Punch" = `[BP]` (1 touche)
+- "Combo" = `[BP], [FP]` (2 touches)
+
+Si tu tapes rapidement "d" puis "x" :
+- Sans délai : Dès que `[BP]` arrive → Affiche "Punch" → Réinitialise → Le combo `[BP], [FP]` n'est jamais reconnu ❌
+- Avec délai : Dès que `[BP]` arrive → Attend 300ms → Si `[FP]` arrive avant, continue → Reconnu "Combo" ✅
+
+### Code fonctionnel pur avec délai (récursion terminale)
 
 ```scala
 import scala.annotation.tailrec
 
-// La boucle principale (FONCTIONNEL)
+// Constante : délai en millisecondes avant de conclure qu'un combo est fini
+val DELAI_COMBO_MS = 300  // 300ms = 0.3 secondes
+
+// La boucle principale (FONCTIONNEL) avec délai
 def bouclePrincipale(automate: Automate, mapping: Map[String, String]): Unit = {
   // Fonction récursive interne (récursion terminale)
   @tailrec
   def boucleLoop(
     etatActuel: Etat,
-    buffer: List[String]  // Buffer pour afficher la séquence
+    buffer: List[String],  // Buffer pour afficher la séquence
+    dernierTemps: Long = System.currentTimeMillis()  // Temps de la dernière touche
   ): Unit = {
-    // 1. Lire une touche
-    val touche = lireTouche()
+    val maintenant = System.currentTimeMillis()
+    val tempsDepuisDerniereTouche = maintenant - dernierTemps
     
-    touche match {
-      case Some(key) =>
-        // 2. Convertir touche -> symbole
-        mapping.get(key) match {
-          case Some(sym) =>
-            val nouveauBuffer = buffer :+ sym
-            
-            // 3. Chercher la transition
-            automate.transitions.get((etatActuel, sym)) match {
-              case Some(nouvelEtat) =>
-                // 4. Vérifier si on est dans un état final
-                if (automate.etatsFinaux.contains(nouvelEtat)) {
-                  // 5. Afficher la séquence
-                  println(nouveauBuffer.mkString(", "))
-                  println()
-                  
-                  // 6. Afficher les mouvements
-                  nouvelEtat.mouvements.foreach { mouvement =>
-                    println(s"$mouvement !!")
-                  }
-                  println()
-                  
-                  // 7. Réinitialiser (récursion avec état initial)
-                  boucleLoop(automate.etatInitial, List.empty)
-                } else {
-                  // Continuer avec le nouvel état
-                  boucleLoop(nouvelEtat, nouveauBuffer)
-                }
-              case None =>
-                // Pas de transition : rester dans le même état
-                boucleLoop(etatActuel, nouveauBuffer)
-            }
-          case None =>
-            // Touche non mappée : ignorer
-            boucleLoop(etatActuel, buffer)
-        }
-      case None =>
-        // Pas de touche : attendre (récursion avec même état)
-        boucleLoop(etatActuel, buffer)
+    // Si on est dans un état final ET qu'il s'est passé assez de temps
+    // → L'utilisateur a fini son combo, on peut afficher
+    if (automate.etatsFinaux.contains(etatActuel) && tempsDepuisDerniereTouche > DELAI_COMBO_MS) {
+      // Afficher la séquence
+      println(buffer.mkString(", "))
+      println()
+      
+      // Afficher les mouvements reconnus
+      etatActuel.mouvements.foreach { mouvement =>
+        println(s"$mouvement !!")
+      }
+      println()
+      
+      // Réinitialiser (récursion avec état initial)
+      boucleLoop(automate.etatInitial, List.empty, maintenant)
+    } else {
+      // 1. Lire une touche en temps réel (non-bloquant)
+      val touche = KeyboardReader.lireTouche()  // Lit instantanément sans Entrée
+      
+      touche match {
+        case Some(keyChar) =>
+          // 2. Convertir caractère -> String puis -> symbole
+          val key = keyChar.toString.toLowerCase
+          mapping.get(key) match {
+            case Some(sym) =>
+              val nouveauBuffer = buffer :+ sym
+              
+              // 3. Chercher la transition
+              automate.transitions.get((etatActuel, sym)) match {
+                case Some(nouvelEtat) =>
+                  // Transition trouvée : continuer avec le nouvel état
+                  boucleLoop(nouvelEtat, nouveauBuffer, maintenant)
+                case None =>
+                  // Pas de transition : rester dans le même état
+                  boucleLoop(etatActuel, nouveauBuffer, maintenant)
+              }
+            case None =>
+              // Touche non mappée : ignorer
+              boucleLoop(etatActuel, buffer, dernierTemps)
+          }
+        case None =>
+          // Pas de touche : continuer à attendre (petit délai pour ne pas surcharger le CPU)
+          Thread.sleep(10)
+          boucleLoop(etatActuel, buffer, dernierTemps)
+      }
     }
   }
   
@@ -767,54 +989,168 @@ def bouclePrincipale(automate: Automate, mapping: Map[String, String]): Unit = {
 
 **Explication étape par étape (FONCTIONNEL)** :
 
-1. **Fonction récursive** :
+1. **Fonction récursive avec temps** :
    ```scala
    @tailrec
-   def boucleLoop(etatActuel: Etat, buffer: List[String])
+   def boucleLoop(etatActuel: Etat, buffer: List[String], dernierTemps: Long)
    ```
-   - On utilise la récursion au lieu de `while(true)`
-   - `@tailrec` : Scala vérifie que c'est optimisé
+   - On ajoute `dernierTemps` pour savoir quand la dernière touche a été tapée
    - Pas de `var` : tout est passé en paramètres
 
-2. **Lire une touche** :
+2. **Vérifier le délai si état final** :
    ```scala
-   val touche = lireTouche()
+   if (automate.etatsFinaux.contains(etatActuel) && tempsDepuisDerniereTouche > DELAI_COMBO_MS)
    ```
-   - On attend que l'utilisateur tape quelque chose
+   - Si on est dans un état final ET qu'il s'est passé 300ms depuis la dernière touche
+   - → Le combo est fini, on peut afficher et réinitialiser
 
-3. **Convertir en symbole** :
+3. **Lire une touche en temps réel** :
    ```scala
-   mapping.get(key)
+   val touche = KeyboardReader.lireTouche()
    ```
-   - Si l'utilisateur tape `"d"`, on cherche dans le mapping
-   - On trouve `"[BP]"`
+   - Lit instantanément les touches **sans avoir besoin d'Entrée**
+   - Non-bloquant : retourne `None` si aucune touche
+   - **Important** : Il faut avoir appelé `KeyboardReader.initialiser()` au début du programme !
 
-4. **Suivre la transition** :
-   ```scala
-   automate.transitions.get((etatActuel, sym))
-   ```
-   - On cherche s'il y a une flèche depuis l'état actuel avec ce symbole
-   - Si oui, on continue la récursion avec le nouvel état
+4. **Si une touche arrive** :
+   - On convertit en symbole
+   - On suit la transition
+   - On met à jour `dernierTemps` à `maintenant` (la touche vient d'arriver)
 
-5. **Vérifier si c'est final** :
-   ```scala
-   if (automate.etatsFinaux.contains(nouvelEtat))
-   ```
-   - Si on est dans un état final, on a reconnu un mouvement !
+5. **Résultat** :
+   - Si tu tapes rapidement plusieurs touches : elles sont toutes traitées avant le délai
+   - Si tu attends 300ms sans touche : le combo est affiché
 
-6. **Afficher** :
-   ```scala
-   nouvelEtat.mouvements.foreach { mouvement =>
-     println(s"$mouvement !!")
-   }
-   ```
-   - On affiche tous les mouvements reconnus
+### Exemple concret avec délai
 
-7. **Réinitialiser (récursion)** :
-   ```scala
-   boucleLoop(automate.etatInitial, List.empty)
-   ```
-   - On relance la récursion avec l'état initial (pas de mutation !)
+**Automate** :
+```
+[0] --[BP]--> [1] ✅ (Punch)
+              |
+              | [FP]
+              ▼
+              [2] ✅ (Combo)
+```
+
+**Scénario : Tu tapes rapidement "d" (→ [BP]) puis "x" (→ [FP])**
+
+#### Timeline avec délai :
+
+```
+Temps   | Action                        | État  | Décision
+--------|-------------------------------|-------|-------------------------
+0ms     | Tape "d" → [BP]               | 0→1   | État 1 est FINAL
+        |                               |       | ⏱️ Attend 300ms...
+50ms    | Tape "x" → [FP] (rapide!)    | 1→2   | Nouvelle touche arrive !
+        |                               |       | Continuer (temps < 300ms)
+350ms   | Pas de nouvelle touche        | 2     | 300ms écoulés depuis x
+        |                               |       | ✅ Affiche "Combo !!"
+        |                               |       | Réinitialise à État 0
+```
+
+**Résultat** : Le combo `[BP], [FP]` est reconnu ! ✅
+
+#### Comparaison : Avec vs Sans délai
+
+**SANS délai (ancienne version)** :
+```
+Temps   | Action              | État  | Décision
+--------|---------------------|-------|------------------
+0ms     | Tape "d" → [BP]     | 0→1   | État 1 FINAL
+        |                     |       | ❌ Affiche "Punch" immédiatement
+        |                     |       | Réinitialise
+50ms    | Tape "x" → [FP]     | 0     | ❌ Trop tard, déjà réinitialisé
+        |                     |       | Pas de transition depuis État 0
+```
+
+**Résultat** : Seul "Punch" est reconnu, le combo est perdu ! ❌
+
+**AVEC délai (nouvelle version)** :
+```
+Temps   | Action              | État  | Décision
+--------|---------------------|-------|------------------
+0ms     | Tape "d" → [BP]     | 0→1   | État 1 FINAL
+        |                     |       | ⏱️ Attend 300ms...
+50ms    | Tape "x" → [FP]     | 1→2   | ✅ Nouvelle touche arrive
+        |                     |       | Continue le combo
+350ms   | Pas de touche       | 2     | ⏱️ 300ms écoulés
+        |                     |       | ✅ Affiche "Combo !!"
+```
+
+**Résultat** : Le combo complet est reconnu ! ✅
+
+### 💡 Ajuster le délai
+
+Le délai de 300ms est une valeur par défaut qui fonctionne bien pour la plupart des jeux. Tu peux l'ajuster :
+
+```scala
+val DELAI_COMBO_MS = 300  // Délai par défaut : 300ms
+
+// Pour des combos plus rapides (jeux de rythme)
+val DELAI_RAPIDE = 200  // 200ms
+
+// Pour des combos plus lents (jeux plus tactiques)
+val DELAI_LENT = 500  // 500ms
+```
+
+**Conseils** :
+- **Délai trop court (< 200ms)** : Difficile de taper rapidement, risque de reconnaître trop tôt
+- **Délai trop long (> 500ms)** : Trop d'attente, le jeu semble lent
+- **300ms** : Un bon compromis pour la plupart des jeux de combat
+
+### Version simplifiée avec readLine() (pour débuter)
+
+Si la version avec délai semble complexe, voici une version simplifiée qui utilise `readLine()` :
+
+```scala
+import scala.annotation.tailrec
+
+// Version simplifiée : lit une touche, puis vérifie le délai
+def bouclePrincipaleSimple(automate: Automate, mapping: Map[String, String]): Unit = {
+  @tailrec
+  def boucleLoop(etatActuel: Etat, buffer: List[String]): Unit = {
+    // Lire une touche (bloque jusqu'à Entrée)
+    val touche = lireToucheSimple()
+    
+    touche match {
+      case Some(key) =>
+        mapping.get(key) match {
+          case Some(sym) =>
+            val nouveauBuffer = buffer :+ sym
+            
+            automate.transitions.get((etatActuel, sym)) match {
+              case Some(nouvelEtat) =>
+                if (automate.etatsFinaux.contains(nouvelEtat)) {
+                  // État final atteint
+                  println(nouveauBuffer.mkString(", "))
+                  println()
+                  nouvelEtat.mouvements.foreach { mouvement =>
+                    println(s"$mouvement !!")
+                  }
+                  println()
+                  
+                  // Pour les combos, on attend un peu avant de réinitialiser
+                  // Ici, avec readLine(), on attend simplement la prochaine touche
+                  boucleLoop(automate.etatInitial, List.empty)
+                } else {
+                  boucleLoop(nouvelEtat, nouveauBuffer)
+                }
+              case None =>
+                boucleLoop(etatActuel, nouveauBuffer)
+            }
+          case None =>
+            boucleLoop(etatActuel, buffer)
+        }
+      case None =>
+        boucleLoop(etatActuel, buffer)
+    }
+  }
+  
+  boucleLoop(automate.etatInitial, List.empty)
+}
+```
+
+**Note** : Avec `readLine()`, le délai est géré naturellement car chaque touche nécessite un appui sur Entrée. Pour les combos, l'utilisateur peut taper plusieurs touches avant d'appuyer sur Entrée, ou taper touche par touche rapidement.
 
 ---
 
@@ -853,8 +1189,21 @@ def main(args: Array[String]): Unit = {
           println("----------------------")
           println()
           
-          // 6. Lancer la boucle
-          bouclePrincipale(automate, mapping)
+          // 6. Initialiser le mode temps réel (lecture sans Entrée)
+          KeyboardReader.initialiser() match {
+            case Right(_) =>
+              try {
+                // 7. Lancer la boucle
+                bouclePrincipale(automate, mapping)
+              } finally {
+                // IMPORTANT : Toujours restaurer le terminal avant de quitter !
+                KeyboardReader.restaurer()
+              }
+            case Left(erreur) =>
+              println(s"Erreur activation mode temps réel: $erreur")
+              println("Fonctionnement limité (lecture avec Entrée)")
+              sys.exit(1)
+          }
           
         case Left(erreur) =>
           // Erreur de lecture du fichier

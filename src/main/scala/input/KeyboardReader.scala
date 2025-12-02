@@ -1,0 +1,5 @@
+package input
+
+class KeyboardReader {
+
+}
