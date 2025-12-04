@@ -1,5 +1,7 @@
 package automaton
 
+import scala.annotation.tailrec
+
 case class Construction (
                         currentState: Int,
                         states: Set[State],
@@ -24,22 +26,58 @@ object AutomatonBuilder {
         val (movementname, symbols) = rule
         addRule(construction, movementname, symbols, state0)
     }
-    
+
     Automaton(
       state0,
       finalConstruction.finalStates,
       finalConstruction.transition
     )
   }
-  
-  
+
+
   def addRule(
                construction: Construction,
                movementName: String,
                symbols: List[String],
                initialState: State
              ): Construction = {
-  
-  
+
+    @tailrec
+    def addSequence(
+                   const : Construction,
+                   currentState: State,
+                   rest: List[String]
+                   ): (Construction, State) = {
+      rest match {
+        case Nil =>
+          val finalState = currentState.copy(
+            isFinal = true,
+            movements = currentState.movements + movementName
+          )
+          val newConstruction = const.copy(
+            states = const.states - currentState + finalState,
+            finalStates = const.finalStates + finalState
+          )
+          (newConstruction, finalState)
+        case symbol :: remaining =>
+          const.transition.get((currentState, symbol)) match {
+            case Some(existingState) => 
+              addSequence(const, existingState, remaining)
+            case None =>
+              val newState = State(const.currentState + 1, false, Set())
+              val newConstruction = const.copy(
+                currentState = const.currentState + 1,
+                states = const.states + newState,
+                transition = const.transition + ((currentState, symbol) -> newState)
+              )
+              addSequence(newConstruction, newState, remaining)
+          }
+      }
+    }
+    
+    val (newConstruction, _) = addSequence(construction, initialState, symbols)
+    newConstruction
   }
+  
+  
 }

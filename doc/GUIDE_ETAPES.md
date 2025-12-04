@@ -72,10 +72,18 @@ lazy val root = (project in file("."))
 Créer `grammars/test.gmr` :
 
 ```
+d -> [BP]
+x -> [FP]
+
 Punch: [BP]
 Combo: [BP], [FP]
 Kick: [FP]
 ```
+
+**Format du fichier** :
+- **Première partie** : Mappings de touches (format `touche -> symbole`)
+- **Ligne vide** : Séparateur entre mappings et règles
+- **Deuxième partie** : Règles de grammaire (format `nom: séquence`)
 
 ---
 
@@ -167,14 +175,69 @@ object GrammarParser {
       .toList
   }
   
-  // Parser toutes les règles du fichier
-  def parseRules(path: String): Either[String, List[(String, List[String])]] = {
+  // Parser une ligne de mapping (format: "touche -> symbole") - FONCTIONNEL
+  def parseMapping(line: String): Option[(String, String)] = {
+    if (line.contains("->")) {
+      val parts = line.split("->")
+      if (parts.length == 2) {
+        Some((parts(0).trim, parts(1).trim))
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
+  
+  // Séparer les mappings et les règles (FONCTIONNEL avec récursion)
+  def separateMappingsAndRules(lines: List[String]): (List[(String, String)], List[String]) = {
+    // Fonction récursive pour séparer (FONCTIONNEL)
+    @scala.annotation.tailrec
+    def separateLoop(
+      remaining: List[String],
+      mappings: List[(String, String)],
+      rules: List[String],
+      inMappingSection: Boolean
+    ): (List[(String, String)], List[String]) = {
+      remaining match {
+        case Nil =>
+          (mappings, rules)
+        case line :: rest =>
+          val trimmed = line.trim
+          if (trimmed.isEmpty) {
+            // Ligne vide : passer à la section règles
+            separateLoop(rest, mappings, rules, inMappingSection = false)
+          } else if (trimmed.contains("->")) {
+            // Ligne de mapping
+            parseMapping(line) match {
+              case Some(mapping) =>
+                separateLoop(rest, mappings :+ mapping, rules, inMappingSection = true)
+              case None =>
+                separateLoop(rest, mappings, rules, inMappingSection)
+            }
+          } else if (inMappingSection && !trimmed.contains(":")) {
+            // Encore dans la section mapping mais pas de "->" : ignorer
+            separateLoop(rest, mappings, rules, inMappingSection)
+          } else {
+            // Ligne de règle (contient ":")
+            separateLoop(rest, mappings, rules :+ line, inMappingSection = false)
+          }
+      }
+    }
+    
+    separateLoop(lines, List.empty, List.empty, inMappingSection = true)
+  }
+  
+  // Parser toutes les règles du fichier (FONCTIONNEL)
+  def parseRules(path: String): Either[String, (Map[String, String], List[(String, List[String])])] = {
     readFile(path).map { lines =>
-      lines.map { line =>
+      val (mappings, ruleLines) = separateMappingsAndRules(lines)
+      val rules = ruleLines.map { line =>
         val (name, sequence) = splitLine(line)
         val symbols = splitSequence(sequence)
         (name, symbols)
       }
+      (mappings.toMap, rules)
     }
   }
 }
@@ -435,19 +498,8 @@ import automaton.Automaton
 
 object KeyMapping {
   
-  // Créer le key mapping automatiquement
-  def createKeyMapping(automaton: Automaton): Map[String, String] = {
-    // 1. Extraire tous les symboles de l'automate
-    val symbols = automaton.transitions.keys.map(_._2).toSet.toList
-    
-    // 2. Liste des touches disponibles
-    val keys = List("q", "w", "e", "r", "t", "y", "u", "i", "o", "p",
-                       "a", "s", "d", "f", "g", "h", "j", "k", "l",
-                       "z", "x", "c", "v", "b", "n", "m")
-    
-    // 3. Associer chaque symbole à une touche
-    symbols.zip(keys).map(_.swap).toMap
-  }
+  // Utiliser les mappings du fichier (pas de génération automatique)
+  // Les mappings sont déjà fournis dans le fichier .gmr
   
   // Afficher les mappings
   def displayMappings(mapping: Map[String, String]): Unit = {
@@ -569,17 +621,17 @@ def main(args: Array[String]): Unit = {
   // Vérifier les arguments
   args.headOption match {
     case Some(filePath) =>
-      // 1. Parser le fichier
+      // 1. Parser le fichier (mappings + règles)
       GrammarParser.parseRules(filePath) match {
-        case Right(rules) =>
-          // 2. Construire l'automate
+        case Right((mappings, rules)) =>
+          // 2. Construire l'automate à partir des règles
           val automaton = AutomatonBuilder.buildAutomaton(rules)
           
-          // 3. Créer le key mapping
-          val mapping = KeyMapping.createKeyMapping(automaton)
+          // 3. Utiliser les mappings du fichier
+          // (Les mappings sont déjà parsés depuis le fichier)
           
           // 4. Afficher les mappings
-          KeyMapping.displayMappings(mapping)
+          KeyMapping.displayMappings(mappings)
           println("----------------------")
           println()
           
@@ -626,6 +678,9 @@ def main(args: Array[String]): Unit = {
 
 1. ✅ Vérifier que `grammars/test.gmr` existe :
    ```
+   d -> [BP]
+   x -> [FP]
+   
    Punch: [BP]
    Combo: [BP], [FP]
    Kick: [FP]
@@ -645,14 +700,68 @@ def main(args: Array[String]): Unit = {
 
 Créer `grammars/mk9.gmr` :
 ```
+q -> Block
+down -> Down
+w -> Flip Stance
+left -> Left
+right -> Right
+e -> Tag
+a -> Throw
+up -> Up
+s -> [BK]
+d -> [BP]
+z -> [FK]
+x -> [FP]
+
 Claw Slam (Freddy Krueger): [BP]
 Knockdown (Sonya): [BP]
+Fist of Death (Liu-Kang): [BP]
 Saibot Blast (Noob Saibot): [BP], [FP]
+Active Duty (Jax): [BP], [FP]
 ```
+
+**Format** :
+- **Lignes 1-11** : Mappings de touches (format `touche -> symbole`)
+- **Ligne 12** : Ligne vide (séparateur)
+- **Lignes 13-17** : Règles de grammaire (format `nom: séquence`)
 
 Tester :
 ```bash
 sbt run grammars/mk9.gmr
+```
+
+**Sortie attendue** :
+```
+Key mappings:
+
+q -> Block
+down -> Down
+w -> Flip Stance
+left -> Left
+right -> Right
+e -> Tag
+a -> Throw
+up -> Up
+s -> [BK]
+d -> [BP]
+z -> [FK]
+x -> [FP]
+
+----------------------
+
+[BP]
+
+Claw Slam (Freddy Krueger) !!
+
+Knockdown (Sonya) !!
+
+Fist of Death (Liu-Kang) !!
+
+[BP], [FP]
+
+Saibot Blast (Noob Saibot) !!
+
+Active Duty (Jax) !!
 ```
 
 ---

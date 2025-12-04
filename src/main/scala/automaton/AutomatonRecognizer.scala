@@ -1,0 +1,37 @@
+package automaton
+
+import scala.annotation.tailrec
+
+object AutomatonRecognizer {
+
+  def reconizer(
+                 automation: Automaton,
+                 sequence: List[String]
+               ): Option[Set[String]] = {
+    
+    @tailrec
+    def recognizeLoop(
+         currentState: State,
+         rest: List[String]
+    ): Option[Set[String]] = {
+      rest match {
+        case Nil =>
+          if (automation.finalStates.contains(currentState)) {
+            Some(currentState.movements)
+          } else {
+            None
+          }
+        case symbol :: remaining =>
+          automation.transitions.get((currentState, symbol)) match {
+            case Some(newState) =>
+              recognizeLoop(newState, remaining)
+            case None =>
+              None
+          }
+      }
+    }
+    
+    recognizeLoop(automation.initialState, sequence)
+    
+  }
+}

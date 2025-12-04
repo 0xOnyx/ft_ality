@@ -85,12 +85,30 @@ case class Automaton(
 
 **Format proposé** (exemple: `grammars/mk9.gmr`):
 ```
+q -> Block
+down -> Down
+w -> Flip Stance
+left -> Left
+right -> Right
+e -> Tag
+a -> Throw
+up -> Up
+s -> [BK]
+d -> [BP]
+z -> [FK]
+x -> [FP]
+
 Claw Slam (Freddy Krueger): [BP]
 Knockdown (Sonya): [BP]
 Fist of Death (Liu-Kang): [BP]
 Saibot Blast (Noob Saibot): [BP], [FP]
 Active Duty (Jax): [BP], [FP]
 ```
+
+**Structure** :
+- **Première partie** : Mappings de touches (format `touche -> symbole`)
+- **Ligne vide** : Séparateur
+- **Deuxième partie** : Règles de grammaire (format `nom: séquence`)
 
 **Format alternatif** (si besoin):
 ```
@@ -314,13 +332,35 @@ def runAutomaton(automaton: Automaton, mappings: Map[String, Symbol]): Unit = {
 **Format de sortie**:
 ```
 Key mappings:
+
 q -> Block
 down -> Down
-...
+w -> Flip Stance
+left -> Left
+right -> Right
+e -> Tag
+a -> Throw
+up -> Up
+s -> [BK]
+d -> [BP]
+z -> [FK]
+x -> [FP]
+
 ----------------------
+
 [BP]
+
 Claw Slam (Freddy Krueger) !!
+
 Knockdown (Sonya) !!
+
+Fist of Death (Liu-Kang) !!
+
+[BP], [FP]
+
+Saibot Blast (Noob Saibot) !!
+
+Active Duty (Jax) !!
 ```
 
 ---

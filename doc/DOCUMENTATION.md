@@ -30,13 +30,16 @@ Le projet fonctionne en deux phases principales :
 
 ```
 Fichier de grammaire (mk9.gmr):
+  d -> [BP]
+  x -> [FP]
+  
   Claw Slam (Freddy Krueger): [BP]
   Saibot Blast (Noob Saibot): [BP], [FP]
 
-Utilisateur tape: [BP]
+Utilisateur tape: d (mappé à [BP])
 → L'automate reconnaît "Claw Slam (Freddy Krueger) !!"
 
-Utilisateur tape: [BP], [FP]
+Utilisateur tape: d puis x (mappé à [BP], [FP])
 → L'automate reconnaît "Saibot Blast (Noob Saibot) !!"
 ```
 
@@ -224,6 +227,16 @@ Symbol (ex: "[BP]")
 
 ```scala
 // Fichier: grammars/mk9.gmr
+// Première partie : Mappings de touches
+q -> Block
+down -> Down
+d -> [BP]
+x -> [FP]
+...
+
+// Ligne vide (séparateur)
+
+// Deuxième partie : Règles de grammaire
 Claw Slam (Freddy Krueger): [BP]
 Knockdown (Sonya): [BP]
 Saibot Blast (Noob Saibot): [BP], [FP]
@@ -407,42 +420,57 @@ def addRule(
 }
 ```
 
-### Phase 3 : Extraction des mappings de touches ⚠️ IMPORTANT
+### Phase 3 : Parsing des mappings de touches ⚠️ IMPORTANT
 
 #### Principe
 
-Les mappings doivent être **automatiquement calculés** à partir de l'alphabet de l'automate, **PAS hardcodés**. C'est une exigence critique du projet !
+Les mappings sont **fournis dans le fichier .gmr** (première partie), **PAS générés automatiquement**. C'est une exigence critique du projet !
 
 #### Pourquoi c'est important ?
 
 Le key mapping est la **liaison entre les touches du clavier** et les **symboles de l'automate**. Sans lui, l'automate ne peut pas interpréter les touches tapées par l'utilisateur.
 
-#### Algorithme
+#### Format du fichier
 
-1. **Extraire l'alphabet** : Tous les symboles uniques utilisés dans les transitions de l'automate
-   ```scala
-   // Exemple avec l'automate construit
-   alphabet = Set("[BP]", "[FP]", "[BK]", "[FK]", 
-                  "Block", "Down", "Up", "Left", "Right", 
-                  "Flip Stance", "Tag", "Throw")
+Le fichier `.gmr` contient deux parties séparées par une ligne vide :
+
+1. **Première partie** : Mappings de touches (format `touche -> symbole`)
+   ```
+   q -> Block
+   down -> Down
+   w -> Flip Stance
+   left -> Left
+   right -> Right
+   e -> Tag
+   a -> Throw
+   up -> Up
+   s -> [BK]
+   d -> [BP]
+   z -> [FK]
+   x -> [FP]
    ```
 
-2. **Générer les mappings** : Associer chaque symbole à une touche clavier de manière automatique
+2. **Ligne vide** : Séparateur
+
+3. **Deuxième partie** : Règles de grammaire (format `nom: séquence`)
+   ```
+   Claw Slam (Freddy Krueger): [BP]
+   Knockdown (Sonya): [BP]
+   ...
+   ```
+
+#### Algorithme
+
+1. **Parser le fichier** : Séparer les mappings et les règles
    ```scala
-   mappings = Map(
-     "q" -> "Block",
-     "down" -> "Down",
-     "w" -> "Flip Stance",
-     "left" -> "Left",
-     "right" -> "Right",
-     "e" -> "Tag",
-     "a" -> "Throw",
-     "up" -> "Up",
-     "s" -> "[BK]",
-     "d" -> "[BP]",
-     "z" -> "[FK]",
-     "x" -> "[FP]"
-   )
+   val (mappings, rules) = GrammarParser.parseRules("grammars/mk9.gmr")
+   // mappings = Map("q" -> "Block", "d" -> "[BP]", ...)
+   // rules = List(("Claw Slam", List("[BP]")), ...)
+   ```
+
+2. **Utiliser les mappings** : Les mappings sont déjà parsés depuis le fichier
+   ```scala
+   // Pas besoin de génération, les mappings viennent du fichier
    ```
 
 3. **Afficher les mappings** au démarrage du programme :
@@ -687,15 +715,24 @@ L'automate peut reconnaître des séquences à différents moments :
 ```
 Utilisateur tape: [BP]
 → État 1 (FINAL) atteint
-→ Affiche: "Claw Slam !!" et "Knockdown !!"
+→ Affiche:
+  [BP]
+  
+  Claw Slam (Freddy Krueger) !!
+  
+  Knockdown (Sonya) !!
 → Réinitialise à l'état initial
 
 Utilisateur tape: [BP], [FP]
 → État 1 (FINAL) atteint après [BP]
-→ Affiche: "Claw Slam !!" et "Knockdown !!"
-→ Continue avec [FP]
+→ Continue avec [FP] (délai < 300ms)
 → État 2 (FINAL) atteint
-→ Affiche: "Saibot Blast !!"
+→ Affiche:
+  [BP], [FP]
+  
+  Saibot Blast (Noob Saibot) !!
+  
+  Active Duty (Jax) !!
 ```
 
 ---
@@ -985,6 +1022,9 @@ Combo: [BP], [FK]
 
 **Fichier `mk9.gmr`** :
 ```
+d -> [BP]
+x -> [FP]
+
 Claw Slam: [BP]
 Knockdown: [BP]
 Saibot Blast: [BP], [FP]
@@ -1009,8 +1049,8 @@ Saibot Blast: [BP], [FP]
 
 | Saisie utilisateur | États visités | Résultat |
 |---------------------|---------------|----------|
-| `[BP]` | 0 → 1 | ✅ "Claw Slam !!"<br>✅ "Knockdown !!" |
-| `[BP], [FP]` | 0 → 1 → 2 | ✅ "Saibot Blast !!" |
+| `[BP]` | 0 → 1 | ✅ Affiche `[BP]` puis "Claw Slam !!" et "Knockdown !!" |
+| `[BP], [FP]` | 0 → 1 → 2 | ✅ Affiche `[BP], [FP]` puis "Saibot Blast !!" |
 
 ### Exemple 3 : Reconnaissance en temps réel
 

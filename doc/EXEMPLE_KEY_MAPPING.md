@@ -48,74 +48,36 @@ Active Duty (Jax) !!
 
 ### Comment les mappings sont générés ?
 
-**Étape 1** : Construire l'automate à partir de la grammaire
+**Étape 1** : Parser le fichier pour extraire les mappings et les règles
 
 ```scala
-// Fichier grammars/mk9.gmr
-val regles = List(
-  ("Claw Slam (Freddy Krueger)", List("[BP]")),
-  ("Knockdown (Sonya)", List("[BP]")),
-  ("Fist of Death (Liu-Kang)", List("[BP]")),
-  ("Saibot Blast (Noob Saibot)", List("[BP]", "[FP]")),
-  ("Active Duty (Jax)", List("[BP]", "[FP]"))
-)
+// Fichier grammars/mk9.gmr contient :
+// - Mappings de touches (format: "touche -> symbole")
+// - Ligne vide
+// - Règles de grammaire (format: "nom: séquence")
 
-val automate = construireAutomate(regles)
+val (mappings, rules) = GrammarParser.parseRules("grammars/mk9.gmr")
+// mappings = Map("q" -> "Block", "d" -> "[BP]", "x" -> "[FP]", ...)
+// rules = List(
+//   ("Claw Slam (Freddy Krueger)", List("[BP]")),
+//   ("Knockdown (Sonya)", List("[BP]")),
+//   ...
+// )
 ```
 
-**Étape 2** : Extraire l'alphabet de l'automate
+**Étape 2** : Construire l'automate à partir des règles
 
 ```scala
-def extractAlphabet(automaton: Automaton): Set[Symbol] = {
-  // Parcourir toutes les transitions et extraire les symboles
-  automaton.transitions.keys.map(_._2).toSet
-}
-
-val alphabet = extractAlphabet(automate)
-// Résultat: Set("[BP]", "[FP]")
+val automaton = AutomatonBuilder.buildAutomaton(rules)
 ```
 
-**⚠️ Note** : Si la grammaire contient aussi des symboles comme `"Block"`, `"Down"`, etc., ils seront automatiquement inclus dans l'alphabet !
+**⚠️ IMPORTANT** : Les mappings sont **fournis dans le fichier**, pas générés automatiquement !
 
-**Étape 3** : Générer les mappings automatiquement
-
-```scala
-def generateKeyMappings(alphabet: Set[Symbol]): Map[String, Symbol] = {
-  val availableKeys = List(
-    "q", "w", "e", "r", "t", "y", "u", "i", "o", "p",
-    "a", "s", "d", "f", "g", "h", "j", "k", "l",
-    "z", "x", "c", "v", "b", "n", "m",
-    "up", "down", "left", "right"
-  )
-  
-  // Si l'alphabet contient des directions, les mapper à elles-mêmes
-  val (directions, autres) = alphabet.partition { s =>
-    Set("up", "down", "left", "right").contains(s.toLowerCase)
-  }
-  
-  val mappingsDirections = directions.map(d => d.toLowerCase -> d).toMap
-  val touchesRestantes = availableKeys.filterNot(mappingsDirections.keys.contains)
-  val mappingsAutres = autres.zip(touchesRestantes).map(_.swap).toMap
-  
-  mappingsDirections ++ mappingsAutres
-}
-
-val mappings = generateKeyMappings(alphabet)
-// Résultat: Map("d" -> "[BP]", "x" -> "[FP]")
-```
-
-**Étape 4** : Afficher les mappings
+**Étape 3** : Afficher les mappings (déjà parsés depuis le fichier)
 
 ```scala
-def displayKeyMappings(mappings: Map[String, Symbol]): Unit = {
-  println("Key mappings:")
-  println()  // Ligne vide
-  mappings.toList.sortBy(_._1).foreach { case (key, symbol) =>
-    println(s"$key -> $symbol")
-  }
-}
-
-displayKeyMappings(mappings)
+KeyMapping.displayMappings(mappings)
+// Affiche les mappings tels qu'ils sont dans le fichier
 ```
 
 ---
@@ -127,27 +89,25 @@ displayKeyMappings(mappings)
 ```scala
 @main
 def main(args: Array[String]): Unit = {
-  // 1. Parser la grammaire
-  val grammar = GrammarParser.parseGrammarFile(args(0))
-  
-  // 2. Construire l'automate
-  val automaton = AutomatonBuilder.buildAutomaton(grammar)
-  
-  // 3. Extraire l'alphabet
-  val alphabet = KeyMapping.extractAlphabet(automaton)
-  
-  // 4. Générer les mappings
-  val mappings = KeyMapping.generateKeyMappings(alphabet)
-  
-  // 5. Afficher les mappings
-  KeyMapping.displayKeyMappings(mappings)
-  
-  // 6. Séparateur
-  println("----------------------")
-  println()
-  
-  // 7. Lancer la boucle de reconnaissance
-  MainLoop.runAutomatonLoop(automaton, mappings, automaton.initialState, List.empty)
+  // 1. Parser le fichier (mappings + règles)
+  GrammarParser.parseRules(args(0)) match {
+    case Right((mappings, rules)) =>
+      // 2. Construire l'automate à partir des règles
+      val automaton = AutomatonBuilder.buildAutomaton(rules)
+      
+      // 3. Afficher les mappings (déjà parsés depuis le fichier)
+      KeyMapping.displayMappings(mappings)
+      
+      // 4. Séparateur
+      println("----------------------")
+      println()
+      
+      // 5. Lancer la boucle de reconnaissance
+      MainLoop.runAutomatonLoop(automaton, mappings, automaton.initialState, List.empty)
+    case Left(error) =>
+      println(s"Erreur: $error")
+      sys.exit(1)
+  }
 }
 ```
 
@@ -206,12 +166,30 @@ def runAutomatonLoop(
 ### Fichier de grammaire
 
 ```
+q -> Block
+down -> Down
+w -> Flip Stance
+left -> Left
+right -> Right
+e -> Tag
+a -> Throw
+up -> Up
+s -> [BK]
+d -> [BP]
+z -> [FK]
+x -> [FP]
+
 Claw Slam (Freddy Krueger): [BP]
 Knockdown (Sonya): [BP]
 Fist of Death (Liu-Kang): [BP]
 Saibot Blast (Noob Saibot): [BP], [FP]
 Active Duty (Jax): [BP], [FP]
 ```
+
+**Format** :
+- **Première partie** : Mappings de touches (format `touche -> symbole`)
+- **Ligne vide** : Séparateur
+- **Deuxième partie** : Règles de grammaire (format `nom: séquence`)
 
 ### Automate construit
 
@@ -227,20 +205,26 @@ Active Duty (Jax): [BP], [FP]
 État 2 (FINAL: "Saibot Blast", "Active Duty")
 ```
 
-### Alphabet extrait
-
-```scala
-alphabet = Set("[BP]", "[FP]")
-```
-
-### Mappings générés
+### Mappings parsés depuis le fichier
 
 ```scala
 mappings = Map(
+  "q" -> "Block",
+  "down" -> "Down",
+  "w" -> "Flip Stance",
+  "left" -> "Left",
+  "right" -> "Right",
+  "e" -> "Tag",
+  "a" -> "Throw",
+  "up" -> "Up",
+  "s" -> "[BK]",
   "d" -> "[BP]",
+  "z" -> "[FK]",
   "x" -> "[FP]"
 )
 ```
+
+**⚠️ IMPORTANT** : Les mappings viennent directement du fichier, pas de génération automatique !
 
 ### Scénario d'utilisation
 
@@ -274,37 +258,34 @@ mappings = Map(
 
 ## ⚠️ Points critiques
 
-### 1. Le key mapping doit être automatique
-
-❌ **FAUX** :
-```scala
-// Hardcodé - INTERDIT !
-val mappings = Map(
-  "d" -> "[BP]",
-  "x" -> "[FP]"
-)
-```
+### 1. Le key mapping vient du fichier
 
 ✅ **CORRECT** :
 ```scala
-// Calculé automatiquement
-val alphabet = extractAlphabet(automaton)
-val mappings = generateKeyMappings(alphabet)
+// Parser les mappings depuis le fichier .gmr
+val (mappings, rules) = GrammarParser.parseRules("grammars/mk9.gmr")
+// Les mappings sont dans la première partie du fichier
 ```
 
-### 2. L'alphabet vient de l'automate, pas du fichier
+### 2. Format du fichier
 
-❌ **FAUX** :
-```scala
-// Lire directement du fichier - INTERDIT !
-val alphabet = lireSymbolesDuFichier(grammarFile)
+Le fichier `.gmr` doit avoir ce format :
+```
+touche -> symbole
+touche -> symbole
+...
+
+nom: séquence
+nom: séquence
 ```
 
-✅ **CORRECT** :
-```scala
-// Extraire de l'automate construit
-val automaton = buildAutomaton(grammar)
-val alphabet = extractAlphabet(automaton)
+**Exemple** :
+```
+d -> [BP]
+x -> [FP]
+
+Punch: [BP]
+Combo: [BP], [FP]
 ```
 
 ### 3. L'affichage doit être exact
@@ -433,8 +414,8 @@ object KeyMapping {
 
 Avant de soumettre, vérifier :
 
-- [ ] Les mappings sont calculés automatiquement (pas hardcodés)
-- [ ] L'alphabet est extrait de l'automate (pas du fichier)
+- [ ] Les mappings sont parsés depuis le fichier .gmr (première partie)
+- [ ] Le parser sépare correctement les mappings et les règles
 - [ ] L'affichage respecte le format exact :
   - [ ] Titre "Key mappings:"
   - [ ] Ligne vide
@@ -455,7 +436,8 @@ Le **key mapping** est la **liaison essentielle** entre :
 **Sans key mapping, l'automate ne peut pas fonctionner !**
 
 Il doit être :
-1. ✅ **Automatique** : Calculé à partir de l'alphabet
-2. ✅ **Affiché** : Montré à l'utilisateur au démarrage
-3. ✅ **Utilisé** : Convertir touches → symboles dans la boucle
+1. ✅ **Dans le fichier** : Défini dans la première partie du fichier .gmr
+2. ✅ **Parsé** : Extrait lors de la lecture du fichier
+3. ✅ **Affiché** : Montré à l'utilisateur au démarrage
+4. ✅ **Utilisé** : Convertir touches → symboles dans la boucle
 
