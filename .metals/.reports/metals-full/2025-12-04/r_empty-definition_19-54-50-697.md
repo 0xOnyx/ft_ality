@@ -1,3 +1,16 @@
+error id: file://<WORKSPACE>/src/main/scala/input/MainLoop.scala:`<none>`.
+file://<WORKSPACE>/src/main/scala/input/MainLoop.scala
+empty definition using pc, found symbol in pc: `<none>`.
+empty definition using semanticdb
+empty definition using fallback
+non-local guesses:
+	 -automaton/State#
+	 -State#
+	 -scala/Predef.State#
+offset: 263
+uri: file://<WORKSPACE>/src/main/scala/input/MainLoop.scala
+text:
+```scala
 package input
 
 import automaton.{Automaton, State}
@@ -9,39 +22,33 @@ object MainLoop {
 
   def mainloop(automaton: Automaton, mapping: Map[String, String]): Unit = {
 
-    def printfinalState() : Unit ={
-      automaton.finalStates.foreach(s => println(s"Final state: ${s.id} ${s.isFinal}"))
-    }
-
     @tailrec
     def loop(
-            currentState: State,
+            currentState: S@@tate,
             buffer: List[String],
             lastTime: Long = System.currentTimeMillis()
             ): Unit = {
       val now = System.currentTimeMillis()
       val timeSinceLastKey = now - lastTime
 
-      if (automaton.finalStates.map(_.id).contains(currentState.id) && timeSinceLastKey > COMBO_DELAY_MS ){
-        print("\r" + buffer.mkString(", ") + "\n")
+      if (automaton.finalStates.contains(currentState) && timeSinceLastKey > COMBO_DELAY_MS ){
+        println(buffer.mkString(", "))
+        println()
 
-        automaton.finalStates.find(_.id == currentState.id).foreach(_.movements.foreach { movement =>
-          println(s"\rExecuting movement: $movement")
-        })
+        currentState.movements.foreach { movement =>
+          println(s"Executing movement: $movement")
+        }
 
+        println()
         loop(automaton.initialState, List.empty, now)
       }
       else {
         val key = KeyboardReader.readKey()
         
         key match {
-          case Some(keychain) =>
-            val keyStr = keychain.toString.toLowerCase()
+          case Some(keychar) =>
+            val keyStr = keychar.toString.toLowerCase()
 
-            if (keyStr == 4.toChar.toString) { // ctrl + d key to exit
-              println("\rExiting...")
-              return
-            }
             mapping.get(keyStr) match {
               case Some(symbol) =>
                 val newBuffer = buffer :+ symbol
@@ -66,3 +73,10 @@ object MainLoop {
     loop(automaton.initialState, List.empty)
   }
 }
+
+```
+
+
+#### Short summary: 
+
+empty definition using pc, found symbol in pc: `<none>`.

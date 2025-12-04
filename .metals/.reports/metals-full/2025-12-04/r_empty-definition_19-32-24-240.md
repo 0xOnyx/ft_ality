@@ -1,3 +1,19 @@
+error id: file://<WORKSPACE>/src/main/scala/input/KeyboardReader.scala:java/io/InputStream#available().
+file://<WORKSPACE>/src/main/scala/input/KeyboardReader.scala
+empty definition using pc, found symbol in pc: java/io/InputStream#available().
+empty definition using semanticdb
+empty definition using fallback
+non-local guesses:
+	 -System.in.available.
+	 -System.in.available#
+	 -System.in.available().
+	 -scala/Predef.System.in.available.
+	 -scala/Predef.System.in.available#
+	 -scala/Predef.System.in.available().
+offset: 1953
+uri: file://<WORKSPACE>/src/main/scala/input/KeyboardReader.scala
+text:
+```scala
 package input
 
 import java.io.IOException
@@ -54,8 +70,8 @@ object KeyboardReader {
   // Lire une touche (non-bloquant) - FONCTION PURE
   def readKey(): Option[Char] = {
     try {
-      // println("Reading key... " + System.in.available())
-      if (System.in.available() > 0) {
+      println("Reading key...")
+      if (System.in.available@@() > 0) {
         Some(System.in.read().toChar)
       } else {
         None
@@ -65,3 +81,9 @@ object KeyboardReader {
     }
   }
 }
+```
+
+
+#### Short summary: 
+
+empty definition using pc, found symbol in pc: java/io/InputStream#available().

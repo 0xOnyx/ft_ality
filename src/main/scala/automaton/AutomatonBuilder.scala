@@ -23,8 +23,8 @@ object AutomatonBuilder {
 
     val finalConstruction = rules.foldLeft(initialConstruction){
       (construction, rule) =>
-        val (movementname, symbols) = rule
-        addRule(construction, movementname, symbols, state0)
+        val (movement, symbols) = rule
+        addRule(construction, movement, symbols, state0)
     }
 
     Automaton(
